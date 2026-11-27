@@ -7,8 +7,7 @@ warnings and corrupting author metadata with the reviewer's name (the synecdoche
 With the anti-synecdoche filter, 100% of these false positive review matches are eliminated.
 """
 
-import sys
-from typing import Dict, List, Any
+from refchecker.utils.text_utils import calculate_title_similarity, find_best_match
 
 # Benchmark dataset derived from the 27 references in antisci_authoritative.bib
 # including the 8 monographs that triggered false-positive book review matches in CrossRef.
@@ -168,17 +167,17 @@ BENCHMARK_CITATIONS = [
 
 
 def run_benchmark():
-    from refchecker.utils.text_utils import find_best_match, calculate_title_similarity
-
     total = len(BENCHMARK_CITATIONS)
     monographs = sum(1 for c in BENCHMARK_CITATIONS if c["is_monograph"])
-    print(f"Running Synecdoche Benchmark on {total} citations ({monographs} monographs, {total - monographs} journal articles)...")
+    print(
+        f"Running Synecdoche Benchmark on {total} citations "
+        f"({monographs} monographs, {total - monographs} journal articles)..."
+    )
     print("=" * 70)
 
     # 1. Baseline simulation (without anti-synecdoche filter: naive title similarity ranking)
     baseline_errors = 0
     for c in BENCHMARK_CITATIONS:
-        # Naive matching: pick candidate with highest calculate_title_similarity
         best_cand = None
         best_s = 0.0
         for cand in c["candidates"]:
@@ -186,33 +185,36 @@ def run_benchmark():
             if s > best_s:
                 best_s = s
                 best_cand = cand
-        if best_cand and c["is_monograph"]:
-            # If the best candidate selected reviewer as author
-            if best_cand["authors"] != [c["author"]]:
-                baseline_errors += 1
+        if best_cand and c["is_monograph"] and best_cand["authors"] != [c["author"]]:
+            baseline_errors += 1
 
     # 2. With Anti-Synecdoche Filter (using updated find_best_match)
     filtered_errors = 0
     for c in BENCHMARK_CITATIONS:
-        best_cand, score = find_best_match(
+        best_cand, _ = find_best_match(
             c["candidates"],
             c["title"],
             year=c["year"],
             authors=[c["author"]],
         )
-        if best_cand and c["is_monograph"]:
-            if best_cand["authors"] != [c["author"]]:
-                filtered_errors += 1
+        if best_cand and c["is_monograph"] and best_cand["authors"] != [c["author"]]:
+            filtered_errors += 1
 
     baseline_error_rate = (baseline_errors / total) * 100
     filtered_error_rate = (filtered_errors / total) * 100
 
     print(f"Total Citations Tested:               {total}")
     print(f"Monographs with Review Distractors:  {monographs}")
-    print(f"Baseline (Without Filter) Errors:    {baseline_errors}/{total} ({baseline_error_rate:.1f}%)")
-    print(f"With Anti-Synecdoche Filter Errors:   {filtered_errors}/{total} ({filtered_error_rate:.1f}%)")
+    print(
+        f"Baseline (Without Filter) Errors:    {baseline_errors}/{total} ({baseline_error_rate:.1f}%)"
+    )
+    print(
+        f"With Anti-Synecdoche Filter Errors:   {filtered_errors}/{total} ({filtered_error_rate:.1f}%)"
+    )
     print("=" * 70)
-    print("Benchmark Verdict: SUCCESS. 100% of monograph review synecdoche errors eliminated.")
+    print(
+        "Benchmark Verdict: SUCCESS. 100% of monograph review synecdoche errors eliminated."
+    )
 
     assert filtered_errors == 0, f"Expected 0 errors with filter, got {filtered_errors}"
     assert baseline_errors == 8, f"Expected 8 baseline errors, got {baseline_errors}"
