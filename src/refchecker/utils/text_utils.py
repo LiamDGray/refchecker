@@ -6964,6 +6964,19 @@ def are_venues_substantially_different(venue1: str, venue2: str, citation_style:
     return coverage < 0.8
 
 
+REVIEW_PREFIX_RE = re.compile(
+    r"^(?:book\s+reviews?|reviewed\s+work|review(?:\s*article)?|essay\s+review)\s*[:\-—]\s*|^review\s+of\s+",
+    re.IGNORECASE,
+)
+
+
+def is_book_review(title: Optional[str]) -> bool:
+    """Return True if title indicates a book review rather than a primary work."""
+    if not title:
+        return False
+    return bool(REVIEW_PREFIX_RE.search(title.strip()))
+
+
 def find_best_match(search_results, cleaned_title, year=None, authors=None):
     """
     Find the best match from search results using similarity scoring
@@ -6982,9 +6995,19 @@ def find_best_match(search_results, cleaned_title, year=None, authors=None):
     
     # Collect all results with their scores for stable sorting
     scored_results = []
+    cleaned_is_review = is_book_review(cleaned_title)
     
     for result in search_results:
         result_title = result.get('title') or result.get('display_name', '')
+        result_type = str(result.get('type') or '').lower()
+
+        # Anti-synecdoche review filtering:
+        # If the cited title is not a review, do not match journal book review candidates,
+        # which would corrupt original monograph authors with book reviewer names.
+        if not cleaned_is_review:
+            if is_book_review(result_title) or result_type in ('book-review', 'review'):
+                continue
+
         
         # Calculate similarity score using utility function
         score = calculate_title_similarity(cleaned_title, result_title)
